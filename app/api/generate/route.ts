@@ -1,8 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase'
-
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+import { getSupabase } from '@/lib/supabase'
 
 export async function POST(req: Request) {
   try {
@@ -11,6 +9,8 @@ export async function POST(req: Request) {
     if (!topic?.trim()) {
       return NextResponse.json({ error: 'Topic is required' }, { status: 400 })
     }
+
+    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const message = await client.messages.create({
       model: 'claude-opus-4-5',
@@ -34,7 +34,7 @@ Return only the post text, nothing else.`,
 
     const content = message.content[0].type === 'text' ? message.content[0].text : ''
 
-    // Save to Supabase with pending status
+    const supabase = getSupabase()
     const { data, error } = await supabase
       .from('posts')
       .insert({ topic, content, status: 'pending' })
