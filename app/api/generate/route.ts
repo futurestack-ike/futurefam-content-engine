@@ -22,7 +22,7 @@ export async function GET() {
       "content-type": "application/json"
     },
     body: JSON.stringify({
-      model: "claude-3-5-haiku-20241022",",
+      model: "claude-3-5-haiku-20241022",
       max_tokens: 200,
       messages: [
         {
