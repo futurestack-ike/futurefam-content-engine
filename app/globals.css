@@ -236,3 +236,15 @@ textarea:focus, input:focus { border-color: var(--navy-light); background: #fff;
   .stat-grid { grid-template-columns: repeat(2, 1fr); }
   .fm-nav-brand { font-size: 0.9rem; }
 }
+
+/* ── Mobile nav scroll ── */
+@media (max-width: 700px) {
+  .fm-nav-links {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 2px;
+  }
+  .fm-nav-links::-webkit-scrollbar { display: none; }
+  .fm-nav-link { font-size: 0.78rem; padding: 0.35rem 0.7rem; white-space: nowrap; }
+}

@@ -3,9 +3,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const links = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/review',    label: 'Review'    },
-  { href: '/approved',  label: 'Approved'  },
+  { href: '/dashboard',        label: 'Dashboard'  },
+  { href: '/review',           label: 'Review'     },
+  { href: '/approved',         label: 'Approved'   },
+  { href: '/sources',          label: 'Bronnen'    },
+  { href: '/knowledge-review', label: 'Kennis'     },
 ]
 
 export default function Nav() {
