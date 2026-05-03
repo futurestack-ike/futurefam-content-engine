@@ -12,32 +12,25 @@ export async function GET() {
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
   // 1. Fetch a random active knowledge item
+  //    Try status = 'active' first, fall back to any row
+  let knowledgeItem: { id: any; content: string; title?: string } | null = null;
+
   const { data: activeRows } = await supabase
     .from("knowledge_items")
-    .select("id, content, title, type, theme")
+    .select("id, content, title")
     .eq("status", "active");
 
   const pool = activeRows && activeRows.length > 0
     ? activeRows
-    : (await supabase.from("knowledge_items").select("id, content, title, type, theme")).data;
+    : (await supabase.from("knowledge_items").select("id, content, title")).data;
 
   if (!pool || pool.length === 0) {
     return Response.json({ error: "No knowledge items found" }, { status: 500 });
   }
 
-  const knowledgeItem = pool[Math.floor(Math.random() * pool.length)];
+  knowledgeItem = pool[Math.floor(Math.random() * pool.length)];
 
-  // 2. Pick a varied content format — not always a question
-  const formats = [
-    "tip: geef een concrete, directe tip",
-    "weetje: deel een verrassend feit of inzicht",
-    "update: geef een korte relevante update",
-    "checklist: geef 2–3 korte actiepunten",
-    "bericht: schrijf een direct, warm bericht zonder vraag",
-  ];
-  const format = formats[Math.floor(Math.random() * formats.length)];
-
-  // 3. Build prompt with real content
+  // 2. Build prompt with real content interpolated
   const prompt = `Je bent de FutureFam content assistant van Future Moves.
 Je schrijft WhatsApp-berichten.
 
@@ -61,8 +54,7 @@ Rol:
 Gebruik deze informatie:
 ${knowledgeItem.content}
 
-Maak 1 WhatsApp bericht als: ${format}
-
+Maak 1 WhatsApp bericht:
 Regels:
 - max 3–4 korte regels
 - simpel Nederlands
@@ -74,7 +66,7 @@ Regels:
 Output:
 Alleen het bericht`;
 
-  // 4. Call Claude
+  // 3. Call Claude
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -101,10 +93,10 @@ Alleen het bericht`;
     return Response.json({ error: "No text returned from Claude", raw: claudeData }, { status: 500 });
   }
 
-  // 5. Save to content_queue — try with source columns, fall back without
+  // 4. Save to content_queue — try with source columns, fall back without
   const fullInsert = {
-    theme: knowledgeItem.theme ?? knowledgeItem.title ?? "algemeen",
-    content_type: knowledgeItem.type ?? "tip",
+    theme: knowledgeItem.title ?? "knowledge",
+    content_type: "tip",
     text,
     status: "draft",
     source_id: knowledgeItem.id,
@@ -114,14 +106,17 @@ Alleen het bericht`;
   const { error: insertError } = await supabase.from("content_queue").insert([fullInsert]);
 
   if (insertError) {
+    // source columns may not exist yet — retry without them
     if (insertError.message.includes("source")) {
       const { error: fallbackError } = await supabase.from("content_queue").insert([{
-        theme: knowledgeItem.theme ?? knowledgeItem.title ?? "algemeen",
-        content_type: knowledgeItem.type ?? "tip",
+        theme: knowledgeItem.title ?? "knowledge",
+        content_type: "tip",
         text,
         status: "draft",
       }]);
-      if (fallbackError) return Response.json({ error: fallbackError.message }, { status: 500 });
+      if (fallbackError) {
+        return Response.json({ error: fallbackError.message }, { status: 500 });
+      }
     } else {
       return Response.json({ error: insertError.message }, { status: 500 });
     }
