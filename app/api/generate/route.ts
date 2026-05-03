@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 
 export async function GET() {
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -6,10 +6,7 @@ export async function GET() {
   const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
 
   if (!supabaseUrl || !supabaseServiceRoleKey || !anthropicApiKey) {
-    return Response.json(
-      { error: "Missing environment variables" },
-      { status: 500 }
-    );
+    return Response.json({ error: "Missing environment variables" }, { status: 500 });
   }
 
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
@@ -27,22 +24,29 @@ export async function GET() {
       messages: [
         {
           role: "user",
-          content: `
-Maak een WhatsApp bericht voor jongeren van 16 tot 27 jaar.
-
-Regels:
-- max 2 zinnen
-- simpel en direct
-- eindig met een vraag
-- thema: geld
-          `
+          content: "Maak een kort WhatsApp bericht voor jongeren van 16 tot 27 jaar over geld. Max 2 zinnen. Eindig met een vraag."
         }
       ]
     })
   });
 
   const data = await response.json();
-  const text = data?.content?.[0]?.text || "Geen bericht gegenereerd.";
+
+  if (!response.ok) {
+    return Response.json({
+      error: "Anthropic API error",
+      details: data
+    }, { status: 500 });
+  }
+
+  const text = data.content?.find((item: any) => item.type === "text")?.text;
+
+  if (!text) {
+    return Response.json({
+      error: "No text returned from Claude",
+      raw: data
+    }, { status: 500 });
+  }
 
   const { error } = await supabase.from("content_queue").insert([
     {
