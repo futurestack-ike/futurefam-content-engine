@@ -1,164 +1,133 @@
 'use client'
 import { useEffect, useState } from 'react'
-import Nav from '@/components/Nav'
 import { supabase, type Post } from '@/lib/supabase'
 
-const STATUS_FILTERS = ['all', 'pending', 'approved', 'rejected'] as const
-
-function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text)
-}
-
-export default function ReviewQueue() {
-  const [posts, setPosts] = useState<Post[]>([])
-  const [filter, setFilter] = useState<typeof STATUS_FILTERS[number]>('all')
+export default function ReviewPage() {
+  const [posts, setPosts]   = useState<Post[]>([])
   const [loading, setLoading] = useState(true)
-  const [updating, setUpdating] = useState<string | null>(null)
+  const [edits, setEdits]   = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState<string | null>(null)
 
-  useEffect(() => {
-    fetchPosts()
-  }, [])
+  useEffect(() => { fetchDrafts() }, [])
 
-  async function fetchPosts() {
+  async function fetchDrafts() {
     setLoading(true)
     const { data } = await supabase
-      .from('posts')
+      .from('content_queue')
       .select('*')
+      .eq('status', 'draft')
       .order('created_at', { ascending: false })
     setPosts(data ?? [])
     setLoading(false)
   }
 
+  async function saveEdit(id: string) {
+    if (edits[id] === undefined) return
+    setSaving(id + '_save')
+    await supabase.from('content_queue').update({ text: edits[id] }).eq('id', id)
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, text: edits[id] } : p))
+    setEdits(prev => { const n = { ...prev }; delete n[id]; return n })
+    setSaving(null)
+  }
+
   async function updateStatus(id: string, status: 'approved' | 'rejected') {
-    setUpdating(id)
-    await supabase.from('posts').update({ status }).eq('id', id)
-    setPosts(prev => prev.map(p => (p.id === id ? { ...p, status } : p)))
-    setUpdating(null)
+    setSaving(id)
+    const patch: any = { status }
+    if (edits[id] !== undefined) patch.text = edits[id]
+    await supabase.from('content_queue').update(patch).eq('id', id)
+    setPosts(prev => prev.filter(p => p.id !== id))
+    setSaving(null)
   }
 
-  const filtered = filter === 'all' ? posts : posts.filter(p => p.status === filter)
-
-  const counts = {
-    all: posts.length,
-    pending: posts.filter(p => p.status === 'pending').length,
-    approved: posts.filter(p => p.status === 'approved').length,
-    rejected: posts.filter(p => p.status === 'rejected').length,
-  }
+  const isDirty = (id: string) => edits[id] !== undefined
 
   return (
-    <>
-      <Nav />
-      <div className="page">
-        <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '2rem', marginBottom: '.4rem' }}>Review Queue</h1>
-          <p style={{ color: 'var(--earth)', fontSize: '.95rem' }}>
-            Approve or reject AI-generated WhatsApp posts
-          </p>
+    <div>
+      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <h1>Review Queue</h1>
+          <p>Edit, approve or reject draft posts</p>
         </div>
+        <button className="btn btn-ghost" onClick={fetchDrafts} style={{ marginTop: 4 }}>↺ Refresh</button>
+      </div>
 
-        {/* Filter tabs */}
-        <div style={{ display: 'flex', gap: '.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-          {STATUS_FILTERS.map(s => (
-            <button
-              key={s}
-              onClick={() => setFilter(s)}
-              className="btn"
-              style={{
-                padding: '.4rem 1rem',
-                fontSize: '.82rem',
-                background: filter === s ? 'var(--ink)' : 'var(--sand)',
-                color: filter === s ? '#fff' : 'var(--ink)',
-              }}
-            >
-              {s.charAt(0).toUpperCase() + s.slice(1)}{' '}
-              <span style={{ opacity: .6 }}>({counts[s]})</span>
-            </button>
-          ))}
-          <button className="btn btn-ghost" onClick={fetchPosts} style={{ marginLeft: 'auto', fontSize: '.82rem' }}>
-            ↺ Refresh
-          </button>
+      {loading && (
+        <div className="empty-state">Loading drafts…</div>
+      )}
+
+      {!loading && posts.length === 0 && (
+        <div className="empty-state">
+          <div style={{ fontSize: '2rem', marginBottom: 12 }}>🎉</div>
+          Queue is empty — no drafts waiting.
         </div>
+      )}
 
-        {loading && (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--earth)' }}>
-            Loading posts…
-          </div>
-        )}
-
-        {!loading && filtered.length === 0 && (
-          <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--earth)' }}>
-            No {filter === 'all' ? '' : filter} posts yet.
-          </div>
-        )}
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {filtered.map(post => (
-            <div
-              key={post.id}
-              className="card"
-              style={{
-                borderLeft: `4px solid ${
-                  post.status === 'approved' ? 'var(--green)'
-                  : post.status === 'rejected' ? 'var(--red)'
-                  : 'var(--bark)'
-                }`,
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '.75rem', gap: '1rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {posts.map(post => (
+          <div key={post.id} className="card" style={{ borderLeft: '4px solid var(--gold)' }}>
+            {/* Meta row */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.85rem', flexWrap: 'wrap', gap: 8 }}>
+              <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
                 <div>
-                  <span style={{ fontSize: '.75rem', color: 'var(--earth)', fontWeight: 500 }}>TOPIC</span>
-                  <p style={{ fontSize: '.9rem', fontWeight: 500 }}>{post.topic}</p>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>Theme</div>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{post.theme}</div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '.5rem', flexShrink: 0 }}>
-                  <span className={`badge badge-${post.status}`}>{post.status}</span>
-                  <span style={{ fontSize: '.75rem', color: 'var(--bark)' }}>
-                    {new Date(post.created_at).toLocaleDateString()}
-                  </span>
+                <div>
+                  <div style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 2 }}>Type</div>
+                  <div style={{ fontWeight: 500, fontSize: '0.9rem' }}>{post.content_type}</div>
                 </div>
               </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--muted)', alignSelf: 'center' }}>
+                {new Date(post.created_at).toLocaleDateString('nl-NL')}
+              </span>
+            </div>
 
-              <div style={{
-                background: 'var(--cream)',
-                borderRadius: '8px',
-                padding: '.9rem 1rem',
-                lineHeight: 1.6,
-                fontSize: '.93rem',
-                marginBottom: '1rem',
-              }}>
-                {post.content}
-              </div>
+            {/* Editable text */}
+            <textarea
+              rows={4}
+              value={edits[post.id] ?? post.text}
+              onChange={e => setEdits(prev => ({ ...prev, [post.id]: e.target.value }))}
+              style={{ marginBottom: '1rem' }}
+            />
 
-              <div style={{ display: 'flex', gap: '.5rem', flexWrap: 'wrap' }}>
-                {post.status !== 'approved' && (
-                  <button
-                    className="btn btn-green"
-                    disabled={updating === post.id}
-                    onClick={() => updateStatus(post.id, 'approved')}
-                  >
-                    ✓ Approve
-                  </button>
-                )}
-                {post.status !== 'rejected' && (
-                  <button
-                    className="btn btn-red"
-                    disabled={updating === post.id}
-                    onClick={() => updateStatus(post.id, 'rejected')}
-                  >
-                    ✕ Reject
-                  </button>
-                )}
+            {/* Actions */}
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+              {isDirty(post.id) && (
                 <button
                   className="btn btn-ghost"
-                  onClick={() => copyToClipboard(post.content)}
-                  style={{ marginLeft: 'auto' }}
+                  disabled={saving === post.id + '_save'}
+                  onClick={() => saveEdit(post.id)}
                 >
-                  Copy
+                  💾 Save edit
                 </button>
-              </div>
+              )}
+              <button
+                className="btn btn-green"
+                disabled={saving === post.id}
+                onClick={() => updateStatus(post.id, 'approved')}
+              >
+                ✓ Approve
+              </button>
+              <button
+                className="btn btn-red"
+                disabled={saving === post.id}
+                onClick={() => updateStatus(post.id, 'rejected')}
+              >
+                ✕ Reject
+              </button>
+              {isDirty(post.id) && (
+                <button
+                  className="btn btn-ghost"
+                  style={{ marginLeft: 'auto' }}
+                  onClick={() => setEdits(prev => { const n = { ...prev }; delete n[post.id]; return n })}
+                >
+                  Discard
+                </button>
+              )}
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </div>
-    </>
+    </div>
   )
 }

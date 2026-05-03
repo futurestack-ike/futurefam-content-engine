@@ -1,120 +1,126 @@
 'use client'
-import { useState } from 'react'
-import Nav from '@/components/Nav'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase'
 
-const TOPIC_SUGGESTIONS = [
-  'Community gratitude ritual',
-  'Morning motivation for parents',
-  'Weekend family challenge',
-  'Mindfulness for busy moms',
-  'Celebrating small wins',
-]
+type Stats = { draft: number; approved: number; posted: number; rejected: number }
 
 export default function Dashboard() {
-  const [topic, setTopic] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{ content: string; id: string } | null>(null)
-  const [error, setError] = useState('')
+  const [stats, setStats]       = useState<Stats>({ draft: 0, approved: 0, posted: 0, rejected: 0 })
+  const [loadingStats, setLoadingStats] = useState(true)
+  const [generating, setGenerating]     = useState(false)
+  const [lastPost, setLastPost]         = useState<string | null>(null)
+  const [error, setError]               = useState('')
+
+  useEffect(() => { fetchStats() }, [])
+
+  async function fetchStats() {
+    setLoadingStats(true)
+    const { data } = await supabase.from('content_queue').select('status')
+    if (data) {
+      setStats({
+        draft:    data.filter(r => r.status === 'draft').length,
+        approved: data.filter(r => r.status === 'approved').length,
+        posted:   data.filter(r => r.status === 'posted').length,
+        rejected: data.filter(r => r.status === 'rejected').length,
+      })
+    }
+    setLoadingStats(false)
+  }
 
   async function generate() {
-    if (!topic.trim()) return
-    setLoading(true)
+    setGenerating(true)
     setError('')
-    setResult(null)
-
+    setLastPost(null)
     try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic }),
-      })
+      const res = await fetch('/api/generate')
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-      setResult({ content: data.post.content, id: data.post.id })
+      if (!res.ok) throw new Error(data.error ?? 'Generation failed')
+      setLastPost(data.text)
+      await fetchStats()
     } catch (e: any) {
       setError(e.message)
     } finally {
-      setLoading(false)
+      setGenerating(false)
     }
   }
 
+  const statCards = [
+    { label: 'Drafts',   value: stats.draft,    color: '#6B7A99',      border: '#6B7A99' },
+    { label: 'Approved', value: stats.approved, color: 'var(--green)',  border: 'var(--green)' },
+    { label: 'Posted',   value: stats.posted,   color: 'var(--gold)',   border: 'var(--gold)' },
+    { label: 'Rejected', value: stats.rejected, color: 'var(--red)',    border: 'var(--red)' },
+  ]
+
   return (
-    <>
-      <Nav />
-      <div className="page">
-        <div style={{ marginBottom: '2rem' }}>
-          <h1 style={{ fontSize: '2rem', marginBottom: '.4rem' }}>Content Generator</h1>
-          <p style={{ color: 'var(--earth)', fontSize: '.95rem' }}>
-            Generate WhatsApp posts for the FutureFam community
+    <div>
+      <div className="section-header">
+        <h1>Content Engine</h1>
+        <p>Generate and manage WhatsApp posts for the Future Moves community</p>
+      </div>
+
+      {/* Stats */}
+      <div className="stat-grid">
+        {statCards.map(({ label, value, color, border }) => (
+          <div key={label} className="stat-card" style={{ color: color, borderTopColor: border }}>
+            <div className="stat-value">{loadingStats ? '–' : value}</div>
+            <div className="stat-label">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Generate hero card */}
+      <div className="card-hero" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+        <div>
+          <h2 style={{ color: '#fff', fontSize: '1.15rem', fontWeight: 700, marginBottom: 6 }}>
+            Generate a new post
+          </h2>
+          <p style={{ color: 'rgba(255,255,255,0.55)', fontSize: '0.85rem', maxWidth: 380 }}>
+            Claude writes a WhatsApp message for young people aged 16–27 and drops it into the review queue.
           </p>
         </div>
-
-        <div className="card" style={{ marginBottom: '1.5rem' }}>
-          <label>Topic or theme</label>
-          <textarea
-            rows={3}
-            placeholder="e.g. Encouraging moms to take 5 minutes for themselves today"
-            value={topic}
-            onChange={e => setTopic(e.target.value)}
-            style={{ marginBottom: '1rem', resize: 'vertical' }}
-          />
-
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.5rem', marginBottom: '1.25rem' }}>
-            {TOPIC_SUGGESTIONS.map(s => (
-              <button
-                key={s}
-                className="btn btn-ghost"
-                style={{ fontSize: '.78rem', padding: '.3rem .8rem' }}
-                onClick={() => setTopic(s)}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-
-          <button
-            className="btn btn-primary"
-            onClick={generate}
-            disabled={loading || !topic.trim()}
-          >
-            {loading ? '⏳ Generating…' : '✦ Generate Post'}
-          </button>
-
-          {error && <p className="error">{error}</p>}
-        </div>
-
-        {result && (
-          <div className="card" style={{ borderLeft: '4px solid var(--accent)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
-              <h3 style={{ fontSize: '1rem' }}>Generated Post</h3>
-              <span className="badge badge-pending">Pending review</span>
-            </div>
-
-            <div style={{
-              background: 'var(--cream)',
-              borderRadius: '8px',
-              padding: '1rem',
-              fontFamily: 'inherit',
-              lineHeight: 1.6,
-              fontSize: '.95rem',
-              marginBottom: '1rem',
-            }}>
-              {result.content}
-            </div>
-
-            <div style={{ display: 'flex', gap: '.75rem', alignItems: 'center' }}>
-              <Link href="/review" className="btn btn-ghost">→ Go to Review Queue</Link>
-              <button
-                className="btn btn-ghost"
-                onClick={() => { setResult(null); setTopic('') }}
-              >
-                Generate another
-              </button>
-            </div>
-          </div>
-        )}
+        <button
+          className="btn btn-gold"
+          onClick={generate}
+          disabled={generating}
+          style={{ fontSize: '0.9rem', padding: '0.65rem 1.75rem', fontFamily: 'Sora, sans-serif', fontWeight: 700 }}
+        >
+          {generating ? '⏳ Generating…' : '+ Generate Post'}
+        </button>
       </div>
-    </>
+
+      {error && <p className="msg-error">{error}</p>}
+
+      {/* Last generated post preview */}
+      {lastPost && (
+        <div className="card" style={{ borderLeft: '4px solid var(--gold)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 700 }}>Just generated</h3>
+            <span className="badge badge-draft">Draft</span>
+          </div>
+          <div className="post-bubble" style={{ marginBottom: '1rem' }}>{lastPost}</div>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <Link href="/review" className="btn btn-navy">→ Go to Review</Link>
+            <button className="btn btn-ghost" onClick={() => setLastPost(null)}>Dismiss</button>
+          </div>
+        </div>
+      )}
+
+      {/* Quick links */}
+      {!lastPost && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1rem', marginTop: '0.5rem' }}>
+          <Link href="/review" className="card" style={{ display: 'block', cursor: 'pointer', transition: 'box-shadow 0.15s' }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>📋</div>
+            <h3 style={{ fontSize: '0.95rem', marginBottom: 4 }}>Review Queue</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>{stats.draft} draft{stats.draft !== 1 ? 's' : ''} waiting for review</p>
+          </Link>
+          <Link href="/approved" className="card" style={{ display: 'block', cursor: 'pointer', transition: 'box-shadow 0.15s' }}>
+            <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>✅</div>
+            <h3 style={{ fontSize: '0.95rem', marginBottom: 4 }}>Approved Posts</h3>
+            <p style={{ fontSize: '0.82rem', color: 'var(--muted)' }}>{stats.approved} post{stats.approved !== 1 ? 's' : ''} ready to send</p>
+          </Link>
+        </div>
+      )}
+    </div>
   )
 }

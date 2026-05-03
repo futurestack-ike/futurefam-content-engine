@@ -12,7 +12,6 @@ export function getSupabase() {
   return _supabase
 }
 
-// Keep backward-compat alias used in client components
 export const supabase = new Proxy({} as SupabaseClient, {
   get(_, prop) {
     return (getSupabase() as any)[prop]
@@ -21,8 +20,9 @@ export const supabase = new Proxy({} as SupabaseClient, {
 
 export type Post = {
   id: string
-  topic: string
-  content: string
-  status: 'pending' | 'approved' | 'rejected'
+  theme: string
+  content_type: string
+  text: string
+  status: 'draft' | 'approved' | 'posted' | 'rejected'
   created_at: string
 }
