@@ -1,51 +1,53 @@
-import Anthropic from '@anthropic-ai/sdk'
-import { NextResponse } from 'next/server'
-import { getSupabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js';
 
-export async function POST(req: Request) {
-  try {
-    const { topic } = await req.json()
+export async function GET() {
+  const supabase = createClient(
+    process.env.SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY
+  );
 
-    if (!topic?.trim()) {
-      return NextResponse.json({ error: 'Topic is required' }, { status: 400 })
-    }
-
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-
-    const message = await client.messages.create({
-      model: 'claude-opus-4-5',
-      max_tokens: 1024,
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": process.env.ANTHROPIC_API_KEY,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "claude-3-haiku-20240307",
+      max_tokens: 200,
       messages: [
         {
-          role: 'user',
-          content: `Write a WhatsApp post for FutureFam community about: "${topic}".
+          role: "user",
+          content: `
+Maak een WhatsApp bericht voor jongeren (16-27)
 
-Rules:
-- Max 300 characters
-- Warm, energetic tone — like a message from a trusted friend
-- Use 1–2 relevant emojis
-- End with a short call to action or question
-- No hashtags
-
-Return only the post text, nothing else.`,
-        },
-      ],
+Regels:
+- max 2 zinnen
+- simpel en direct
+- eindig met een vraag
+- thema: geld
+          `
+        }
+      ]
     })
+  });
 
-    const content = message.content[0].type === 'text' ? message.content[0].text : ''
+  const data = await response.json();
 
-    const supabase = getSupabase()
-    const { data, error } = await supabase
-      .from('posts')
-      .insert({ topic, content, status: 'pending' })
-      .select()
-      .single()
+  const text = data?.content?.[0]?.text || "fallback message";
 
-    if (error) throw error
+  // opslaan in Supabase
+  await supabase.from('content_queue').insert([
+    {
+      theme: 'geld',
+      content_type: 'tip',
+      text: text,
+      status: 'draft'
+    }
+  ]);
 
-    return NextResponse.json({ post: data })
-  } catch (err: any) {
-    console.error(err)
-    return NextResponse.json({ error: err.message ?? 'Generation failed' }, { status: 500 })
-  }
+  return new Response(JSON.stringify({ text }), {
+    headers: { 'Content-Type': 'application/json' }
+  });
 }
